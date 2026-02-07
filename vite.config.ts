@@ -48,7 +48,10 @@ export default defineConfig(({ mode }) => {
       ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // Inline Supabase env at build time so Vercel/hosts always provide them
+        __AXIOM_SUPABASE_URL__: JSON.stringify(process.env.VITE_SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? ''),
+        __AXIOM_SUPABASE_ANON_KEY__: JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? ''),
       },
       resolve: {
         alias: {
