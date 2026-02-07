@@ -1,69 +1,63 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Axiom — Life OS
 
-# Run and deploy your AI Studio app
+A gamified life-operating system: turn goals into **quests**, track **stats** across life areas, earn **credits**, and spend them in the **store**. Built as a single-page app with a terminal-style UI and optional AI-powered quest suggestions.
 
-This contains everything you need to run your app locally.
+## What it does
 
-View your app in AI Studio: https://ai.studio/apps/drive/1WKm3YLpxC1w03JzslOdELtVdTAmsGRUm
+- **Quests** — Create and complete Daily, Weekly, and Epic quests with XP and credit rewards. Set difficulty (Easy → Extreme), penalties for missing quests, and link quests to stats (physical, cognitive, career, financial, mental, creative).
+- **Progression** — Level up, maintain streaks, and unlock level titles (Initiate → Cadet → Operative → Specialist → … → Ascendant → Deity).
+- **Stats** — Six life dimensions shown on a radar chart; completing quests boosts the stats you assign.
+- **Store** — Spend credits on rewards (e.g. dopamine protocol, cheat meal, hardware upgrade, sabbatical day).
+- **Terminal** — System-style log for penalties, resets, and protocol messages.
+- **Auth & sync** — Sign up / log in with Supabase; profile and quests sync to the cloud.
+- **AI (optional)** — Use Gemini to analyze a quest idea and suggest title, XP, credits, penalty, and stat rewards.
 
-## Run Locally
+Without Supabase configured, the app runs in **demo mode** with mock quests and no login.
+
+## Tech stack
+
+- **React 19** + **TypeScript** + **Vite 6**
+- **Tailwind CSS** (via CDN), **Lucide** icons, **Recharts** (stats radar)
+- **Supabase** — Auth, PostgreSQL (profiles + quests), Row Level Security
+- **Google Gemini** — Optional AI quest analysis
+- **PWA** — Installable, works offline, service worker cache
+
+## Run locally
 
 **Prerequisites:** Node.js
 
-1. Install dependencies: `npm install`
+1. Clone and install: `npm install`
 2. Copy [.env.example](.env.example) to `.env.local` and fill in your keys.
-3. Run the app: `npm run dev`
+3. Start dev server: `npm run dev`
 
 ### Connecting to Supabase (real data & auth)
 
-Without Supabase configured, the app runs in **demo mode** with mock quests and no login. To use the real database:
+Without Supabase, the app uses demo mode (mock quests, no auth). To use your own data:
 
-1. **Create a project** at [supabase.com/dashboard](https://supabase.com/dashboard) (or use an existing one).
-2. **Get your API keys:** Project → **Settings** → **API**.
-   - **Project URL** → use as `VITE_SUPABASE_URL`
-   - **anon public** key → use as `VITE_SUPABASE_ANON_KEY`
-3. **Add to `.env.local`:**
+1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard).
+2. Under **Settings → API**, copy **Project URL** and **anon public** key.
+3. In `.env.local` set:
    ```bash
    VITE_SUPABASE_URL=https://xxxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6...
+   VITE_SUPABASE_ANON_KEY=eyJhbGci...
    ```
-4. **Create the tables:** In the Supabase dashboard, open **SQL Editor**, paste the contents of [supabase_schema.sql](supabase_schema.sql), and run it. This creates `profiles` and `quests` and sets up Row Level Security.
-5. Restart the dev server (`npm run dev`). You should see the **Auth** screen; sign up or log in to use your real profile and quests.
+4. In the Supabase **SQL Editor**, run the contents of [supabase_schema.sql](supabase_schema.sql) to create `profiles` and `quests` and RLS policies.
+5. Restart the dev server. You should see the Auth screen; sign up or log in to use your profile and quests.
+
+Optional: set `GEMINI_API_KEY` in `.env.local` to enable AI quest analysis.
 
 ## Deploy
 
-The app is a static Vite build. Deploy the `dist/` folder to any static host.
+Build: `npm run build` (output in `dist/`). Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (and optionally `GEMINI_API_KEY`) on your host. Ensure all routes serve `index.html` for the SPA.
 
-1. **Build:** `npm run build`
-2. **Set env vars** on your host: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and optionally `GEMINI_API_KEY` (for AI quest analysis).
-3. **Redirects (SPA):** All routes must serve `index.html` so the app can handle client-side routing.
-
-### Vercel
-
-- Push to GitHub, then [vercel.com](https://vercel.com) → Import project.
-- Add **Environment Variables** in the dashboard (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY).
-- Build command: `npm run build`, Output directory: `dist`. Vercel detects Vite and sets this automatically.
-
-### Netlify
-
-- Push to GitHub, then [netlify.com](https://netlify.com) → Add new site → Import from Git.
-- Build command: `npm run build`, Publish directory: `dist`.
-- Add env vars in Site settings → Environment variables.
-- Add `public/_redirects` with: `/* /index.html 200` (or use the Netlify UI: Redirects → add rule `/* /index.html 200`).
-
-### Other hosts
-
-- Use the same pattern: build → upload `dist/`, configure SPA fallback so all requests serve `index.html`.
+- **Vercel** — Import from Git, add env vars; build/output are usually auto-detected.
+- **Netlify** — Build command: `npm run build`, Publish directory: `dist`, add env vars. The repo includes `public/_redirects` for SPA routing.
 
 ## PWA — Install on your phone
 
-The app is a **Progressive Web App (PWA)**. After you deploy it:
+After deploying, open the app URL on your phone:
 
-1. Open the **deployed URL** in your phone’s browser (e.g. Chrome on Android, Safari on iOS).
-2. **Android (Chrome):** Menu (⋮) → “Install app” or “Add to Home screen.”
-3. **iOS (Safari):** Share → “Add to Home Screen” → Add.
-4. Open Axiom from your home screen; it runs in a standalone window without the browser UI.
+- **Android (Chrome):** Menu → “Install app” or “Add to Home screen.”
+- **iOS (Safari):** Share → “Add to Home Screen.”
 
-Updates are applied automatically when you reopen the app. For a custom app icon on iOS, add `public/icons/icon-192.png` (192×192) and `public/icons/icon-512.png` (512×512); the build already includes a default icon.
+Open Axiom from the home screen to use it in a standalone window. For a custom app icon on iOS, add `public/icons/icon-192.png` and `public/icons/icon-512.png`; the build includes a default icon.
