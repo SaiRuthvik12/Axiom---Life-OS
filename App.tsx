@@ -621,8 +621,8 @@ export default function App() {
         />
       )}
 
-      {/* Mobile Header */}
-      <div className="md:hidden bg-axiom-900 border-b border-axiom-800 p-4 flex justify-between items-center z-50">
+      {/* Mobile Header — safe area so it sits below status bar on iPhone */}
+      <div className="md:hidden bg-axiom-900 border-b border-axiom-800 flex justify-between items-center z-50 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <Shield className="text-axiom-accent" />
           <span className="font-bold tracking-widest text-lg">AXIOM</span>
@@ -632,12 +632,12 @@ export default function App() {
         </button>
       </div>
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation — on mobile, higher z so it draws above header when open */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 w-64 bg-axiom-900 border-r border-axiom-800 z-40 transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        fixed md:static inset-y-0 left-0 w-64 bg-axiom-900 border-r border-axiom-800 z-40 md:z-auto transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0 z-[60]' : '-translate-x-full md:translate-x-0'}
       `}>
-        <div className="p-6 flex flex-col h-full">
+        <div className="p-6 flex flex-col h-full pt-[max(1rem,env(safe-area-inset-top))] md:pt-6">
           <div className="hidden md:flex items-center gap-2 mb-8 text-axiom-accent">
             <Shield size={24} />
             <span className="font-bold tracking-[0.2em] text-xl">AXIOM</span>
