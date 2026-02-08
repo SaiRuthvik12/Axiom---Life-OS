@@ -54,37 +54,35 @@ export const WorldView: React.FC<WorldViewProps> = ({
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="rounded-lg border border-zinc-800/50 bg-zinc-900/60 p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <Globe className="h-5 w-5 text-emerald-400" />
-              <h2 className="text-lg font-mono font-bold text-white">{worldState.nexusName}</h2>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-800/30">
-                {worldTitle}
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400 mt-2 max-w-xl italic">{statusNarrative}</p>
-          </div>
-          <div className="text-right space-y-1">
-            <div className="text-[10px] font-mono text-zinc-500 uppercase">
-              Era of {ERA_NAMES[worldState.era] ?? 'Foundation'}
-            </div>
-            <div className="text-[10px] font-mono text-zinc-600">
-              {ERA_DESCRIPTIONS[worldState.era] ?? ''}
-            </div>
-          </div>
+      <div className="rounded-lg border border-zinc-800/50 bg-zinc-900/60 p-4 md:p-5">
+        {/* Title row */}
+        <div className="flex items-center gap-2 mb-1">
+          <Globe className="h-5 w-5 text-emerald-400 shrink-0" />
+          <h2 className="text-lg font-mono font-bold text-white truncate">{worldState.nexusName}</h2>
         </div>
 
+        {/* Badges */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-800/30">
+            {worldTitle}
+          </span>
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-800/60 text-zinc-400 border border-zinc-700/40">
+            Era of {ERA_NAMES[worldState.era] ?? 'Foundation'}
+          </span>
+        </div>
+
+        {/* Narrative */}
+        <p className="text-xs text-zinc-400 italic">{statusNarrative}</p>
+
         {/* Stats bar */}
-        <div className="flex items-center gap-6 mt-4 pt-3 border-t border-zinc-800/50">
+        <div className="grid grid-cols-3 md:flex md:items-center gap-3 md:gap-6 mt-4 pt-3 border-t border-zinc-800/50">
           <StatBadge label="Districts" value={`${unlockedCount}/6`} />
           <StatBadge label="Structures" value={`${worldState.totalStructuresBuilt}/30`} />
           <StatBadge label="Avg Vitality" value={`${avgVitality}%`} />
           <StatBadge label="Recoveries" value={`${worldState.totalRecoveries}`} />
           <StatBadge label="Best Streak" value={`${worldState.longestPristineStreak}d`} />
           {unreadEvents.length > 0 && (
-            <div className="ml-auto flex items-center gap-1 text-amber-400">
+            <div className="col-span-3 md:col-span-1 md:ml-auto flex items-center gap-1 text-amber-400">
               <AlertTriangle className="h-3 w-3" />
               <span className="text-[10px] font-mono">{unreadEvents.length} new events</span>
             </div>

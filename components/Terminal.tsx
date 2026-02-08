@@ -18,7 +18,7 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialMessages.length > 0) {
@@ -30,7 +30,9 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
   }, [initialMessages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll the terminal's own container — never the page
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [history]);
 
   // GM greeting only once per session (not on every Dashboard open / tab switch)
@@ -75,7 +77,7 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
         </div>
       </div>
 
-      <div className="flex-1 p-4 overflow-y-auto space-y-2 text-gray-300">
+      <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto space-y-2 text-gray-300">
         {history.map((line, i) => (
           <div key={i} className={`break-words ${line.startsWith('GM:') ? 'text-axiom-accent' : line.startsWith('SYSTEM:') ? 'text-axiom-danger' : 'text-gray-400'}`}>
             <span className="opacity-50 mr-2">
@@ -90,7 +92,6 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
              Processing...
            </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="p-2 bg-axiom-900 border-t border-axiom-700 flex gap-2">

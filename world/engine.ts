@@ -214,16 +214,6 @@ export function processQuestCompletion(
     }
   }
 
-  // Update pristine streak
-  const unlockedDistricts = newState.districts.filter(d => d.isUnlocked);
-  if (unlockedDistricts.length > 0 && unlockedDistricts.every(d => d.vitality >= 40)) {
-    newState.currentPristineStreak++;
-    newState.longestPristineStreak = Math.max(
-      newState.longestPristineStreak,
-      newState.currentPristineStreak,
-    );
-  }
-
   // Check milestones
   checkMilestones(newState, events, now);
 
@@ -373,9 +363,15 @@ export function processDecay(
     }
   }
 
-  // Reset pristine streak if any unlocked district dropped below STABLE
+  // Update pristine streak (once per day, in decay processing)
   const unlockedDistricts = newState.districts.filter(d => d.isUnlocked);
-  if (unlockedDistricts.some(d => d.vitality < 40)) {
+  if (unlockedDistricts.length > 0 && unlockedDistricts.every(d => d.vitality >= 40)) {
+    newState.currentPristineStreak++;
+    newState.longestPristineStreak = Math.max(
+      newState.longestPristineStreak,
+      newState.currentPristineStreak,
+    );
+  } else {
     newState.currentPristineStreak = 0;
   }
 
