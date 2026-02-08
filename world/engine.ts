@@ -257,12 +257,15 @@ export function processQuestUncompletion(
 
     districtState.vitality = clamp(districtState.vitality - boost, 0, 100);
 
-    // Update companion mood to reflect new vitality
+    // Reverse companion loyalty and update mood
     const companionDef = COMPANIONS.find(c => c.districtId === districtDef.id);
     if (companionDef) {
       const companionState = newState.companions.find(c => c.id === companionDef.id);
-      if (companionState && companionState.isPresent) {
-        companionState.mood = getCompanionMood(districtState.vitality, companionState.loyalty);
+      if (companionState) {
+        companionState.loyalty = clamp(companionState.loyalty - 1, 0, 100);
+        if (companionState.isPresent) {
+          companionState.mood = getCompanionMood(districtState.vitality, companionState.loyalty);
+        }
       }
     }
   }
