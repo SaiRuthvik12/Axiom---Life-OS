@@ -7,9 +7,10 @@ interface TerminalProps {
   player: Player;
   quests: Quest[];
   initialMessages?: string[];
+  worldContext?: string;
 }
 
-const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [] }) => {
+const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [], worldContext }) => {
   const [history, setHistory] = useState<string[]>([
     "AXIOM OS v2.4.1 initialized...",
     "User biometric signature verified.",
@@ -40,7 +41,7 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
     gmShownRef.current = true;
     const initGM = async () => {
       setIsProcessing(true);
-      const greeting = await generateGMCommentary(player, quests, "Initialize session. Acknowledge user return.");
+      const greeting = await generateGMCommentary(player, quests, "Initialize session. Acknowledge user return.", worldContext);
       setHistory(prev => [...prev, `GM: ${greeting}`]);
       if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('axiom_gm_greeting_shown', '1');
       setIsProcessing(false);
@@ -57,7 +58,7 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
     setInput('');
     setIsProcessing(true);
 
-    const response = await generateGMCommentary(player, quests, userMsg);
+    const response = await generateGMCommentary(player, quests, userMsg, worldContext);
     setHistory(prev => [...prev, `GM: ${response}`]);
     setIsProcessing(false);
   };

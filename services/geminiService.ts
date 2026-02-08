@@ -6,7 +6,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const modelName = 'gemini-3-flash-preview';
 
-export const generateGMCommentary = async (player: Player, activeQuests: Quest[], messageContext?: string): Promise<string> => {
+export const generateGMCommentary = async (player: Player, activeQuests: Quest[], messageContext?: string, worldContext?: string): Promise<string> => {
   try {
     const systemPrompt = `
       You are AXIOM, a cold, calculating, but ultimately benevolent AI Game Master for a "Life Operating System".
@@ -22,9 +22,11 @@ export const generateGMCommentary = async (player: Player, activeQuests: Quest[]
       - Strongest Stat: ${Object.entries(player.stats).reduce((a, b) => a[1] > b[1] ? a : b)[0]}
       - Weakest Stat: ${Object.entries(player.stats).reduce((a, b) => a[1] < b[1] ? a : b)[0]}
       - Pending Quests: ${activeQuests.filter(q => q.status === 'PENDING').length}
+      ${worldContext ? `\n      World State (The Nexus):\n      ${worldContext}` : ''}
       
       Task:
       Generate a short system message (max 2 sentences) reacting to the user's current status or the specific context provided.
+      If the Nexus world state is provided, you may reference district conditions, companion moods, or recent world events when relevant.
     `;
 
     const userPrompt = messageContext || "Analyze current status and provide a strategic directive.";

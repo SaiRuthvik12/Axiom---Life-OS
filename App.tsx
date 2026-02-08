@@ -25,12 +25,13 @@ import {
   LogOut,
   ChevronDown,
   ChevronUp,
-  ArrowRight
+  ArrowRight,
+  Globe
 } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { PlayerService } from './services/playerService';
-import { Player, Quest, QuestStatus, Reward, QuestType, PlayerStats } from './types';
+import { Player, Quest, QuestStatus, Reward, QuestType, PlayerStats, StatKey } from './types';
 import { INITIAL_PLAYER, MOCK_QUESTS, MOCK_REWARDS, getLevelTitle } from './constants';
 import StatsRadar from './components/StatsRadar';
 import QuestCard from './components/QuestCard';
@@ -41,6 +42,20 @@ import Onboarding from './components/Onboarding';
 import LevelUpModal from './components/LevelUpModal'; 
 import { analyzeUserQuest } from './services/geminiService';
 import { getLocalDate, getYesterdayDate, getStartOfWeek, getStartOfMonth, getLocalDateStringFromISO } from './lib/dateUtils';
+import {
+  WorldView,
+  WorldService,
+  createInitialWorldState,
+  processQuestCompletion,
+  processQuestUncompletion,
+  processDecay,
+  buildStructure,
+  repairStructure,
+  launchExpedition,
+  markEventRead,
+  getWorldContextForGM,
+} from './world';
+import type { WorldState } from './world';
 
 // --- Subcomponents ---
 
@@ -113,10 +128,11 @@ export default function App() {
   const [player, setPlayer] = useState<Player>(INITIAL_PLAYER);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [rewards, setRewards] = useState<Reward[]>(MOCK_REWARDS);
+  const [worldState, setWorldState] = useState<WorldState | null>(null);
   
   // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [view, setView] = useState<'DASHBOARD' | 'STORE' | 'SYSTEM'>('DASHBOARD');
+  const [view, setView] = useState<'DASHBOARD' | 'STORE' | 'SYSTEM' | 'WORLD'>('DASHBOARD');
   const [levelUpState, setLevelUpState] = useState<{oldLevel: number, newLevel: number} | null>(null);
   const [systemMessages, setSystemMessages] = useState<string[]>([]);
   
@@ -150,6 +166,7 @@ export default function App() {
     if (!isSupabaseConfigured()) {
        setQuests(MOCK_QUESTS);
        setPlayer(INITIAL_PLAYER);
+       setWorldState(createInitialWorldState(INITIAL_PLAYER.name + "'s Nexus"));
        setLoading(false);
        return;
     }
@@ -198,10 +215,12 @@ export default function App() {
          }
       }
 
+      let processedQuests: Quest[] = userQuests || [];
+
       if (userQuests && currentPlayer) {
          // CORE LOGIC: Process Resets for Daily, Weekly, and Epic
          const { updatedQuests, totalPenalty, streakBroken, msgs } = await processAllResets(userQuests);
-         
+         processedQuests = updatedQuests;
          setQuests(updatedQuests);
 
          if (totalPenalty > 0 || streakBroken) {
@@ -225,7 +244,36 @@ export default function App() {
       }
 
       setPlayer(currentPlayer || INITIAL_PLAYER);
-      
+
+      // ── World System: Load or create, apply daily decay ──
+      if (currentPlayer) {
+        try {
+          let world = await WorldService.getWorldState(userId);
+          if (!world) {
+            world = createInitialWorldState((currentPlayer.name || 'Operative') + "'s Nexus");
+            await WorldService.createWorldState(userId, world);
+          }
+
+          // Apply decay once per day (first load of the day)
+          const today = getLocalDate();
+          const lastWorldProcess = world.lastProcessedAt?.split('T')[0] ?? '';
+          if (lastWorldProcess < today) {
+            const completedStats: StatKey[] = [...new Set(
+              processedQuests
+                .filter(q => q.status === QuestStatus.COMPLETED)
+                .flatMap(q => Object.keys(q.statRewards || {}))
+            )] as StatKey[];
+            const decayResult = processDecay(world, completedStats);
+            world = decayResult.state;
+            await WorldService.updateWorldState(userId, world);
+          }
+
+          setWorldState(world);
+        } catch (worldErr) {
+          console.error('[World] Load error:', worldErr);
+        }
+      }
+
     } catch (e) {
       console.error("Data load error", e);
     } finally {
@@ -342,7 +390,8 @@ export default function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
-    setQuests([]); 
+    setQuests([]);
+    setWorldState(null);
   };
   
   const toggleQuestStatus = async (questId: string, e?: React.MouseEvent) => {
@@ -432,6 +481,23 @@ export default function App() {
             status: updatedQuest.status,
             lastCompletedAt: updatedQuest.lastCompletedAt
         });
+    }
+
+    // ── World System: Process quest completion / un-completion ──
+    if (worldState) {
+      if (isCompleting) {
+        const result = processQuestCompletion(worldState, quest, updatedPlayer);
+        setWorldState(result.state);
+        if (session) {
+          WorldService.updateWorldState(session.user.id, result.state);
+        }
+      } else {
+        const reversed = processQuestUncompletion(worldState, quest);
+        setWorldState(reversed);
+        if (session) {
+          WorldService.updateWorldState(session.user.id, reversed);
+        }
+      }
     }
   };
 
@@ -575,6 +641,55 @@ export default function App() {
        [stat]: Math.max(0, (prev[stat] || 0) + delta)
      }));
   };
+
+  // ── World System Handlers ──
+  const handleBuildStructure = async (districtId: string, structureId: string) => {
+    if (!worldState) return;
+    const result = buildStructure(worldState, districtId, structureId, player.level, player.credits);
+    if ('error' in result) { alert(result.error); return; }
+    setWorldState(result.state);
+    const newCredits = player.credits - result.creditsCost;
+    setPlayer(prev => ({ ...prev, credits: newCredits }));
+    if (session) {
+      WorldService.updateWorldState(session.user.id, result.state);
+      PlayerService.updateProfile(session.user.id, { credits: newCredits });
+    }
+  };
+
+  const handleRepairStructure = async (districtId: string, structureId: string) => {
+    if (!worldState) return;
+    const result = repairStructure(worldState, districtId, structureId, player.credits);
+    if ('error' in result) { alert(result.error); return; }
+    setWorldState(result.state);
+    const newCredits = player.credits - result.creditsCost;
+    setPlayer(prev => ({ ...prev, credits: newCredits }));
+    if (session) {
+      WorldService.updateWorldState(session.user.id, result.state);
+      PlayerService.updateProfile(session.user.id, { credits: newCredits });
+    }
+  };
+
+  const handleLaunchExpedition = async (expeditionId: string) => {
+    if (!worldState) return;
+    const result = launchExpedition(worldState, expeditionId, player.credits, player.level, player.stats);
+    if ('error' in result) { alert(result.error); return; }
+    setWorldState(result.state);
+    const newCredits = player.credits - result.creditsCost;
+    setPlayer(prev => ({ ...prev, credits: newCredits }));
+    if (session) {
+      WorldService.updateWorldState(session.user.id, result.state);
+      PlayerService.updateProfile(session.user.id, { credits: newCredits });
+    }
+  };
+
+  const handleWorldEventRead = async (eventId: string) => {
+    if (!worldState) return;
+    const newState = markEventRead(worldState, eventId);
+    setWorldState(newState);
+    if (session) {
+      WorldService.updateWorldState(session.user.id, newState);
+    }
+  };
   
   const handleOnboardingComplete = async (name: string, avatar: string, riskTolerance: 'LOW' | 'MEDIUM' | 'HIGH') => {
     const updatedPlayer = { ...player, name, avatar, riskTolerance };
@@ -707,6 +822,12 @@ export default function App() {
               <Activity size={18} /> Dashboard
             </button>
             <button 
+              onClick={() => { setView('WORLD'); setSidebarOpen(false); }}
+              className={`w-full text-left px-4 py-3 rounded-md text-sm font-medium transition-colors flex items-center gap-3 ${view === 'WORLD' ? 'bg-axiom-800 text-white border-l-2 border-axiom-accent' : 'text-gray-400 hover:bg-axiom-800/50 hover:text-white'}`}
+            >
+              <Globe size={18} /> The Nexus
+            </button>
+            <button 
               onClick={() => { setView('STORE'); setSidebarOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-md text-sm font-medium transition-colors flex items-center gap-3 ${view === 'STORE' ? 'bg-axiom-800 text-white border-l-2 border-axiom-accent' : 'text-gray-400 hover:bg-axiom-800/50 hover:text-white'}`}
             >
@@ -837,7 +958,7 @@ export default function App() {
 
               {/* Right Column: AI Terminal */}
               <div className="lg:col-span-1 h-[600px] lg:h-auto">
-                <Terminal player={player} quests={quests} initialMessages={systemMessages} />
+                <Terminal player={player} quests={quests} initialMessages={systemMessages} worldContext={worldState ? getWorldContextForGM(worldState) : undefined} />
               </div>
 
             </div>
@@ -845,6 +966,17 @@ export default function App() {
 
           {view === 'STORE' && (
              <Store player={player} rewards={rewards} onPurchase={handlePurchase} onConsume={handleConsumeReward} />
+          )}
+
+          {view === 'WORLD' && worldState && (
+            <WorldView
+              worldState={worldState}
+              player={player}
+              onBuildStructure={handleBuildStructure}
+              onRepairStructure={handleRepairStructure}
+              onLaunchExpedition={handleLaunchExpedition}
+              onEventRead={handleWorldEventRead}
+            />
           )}
 
           {view === 'SYSTEM' && (
