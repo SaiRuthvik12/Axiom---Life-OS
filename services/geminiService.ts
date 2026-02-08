@@ -54,7 +54,8 @@ interface QuestAnalysis {
 export const analyzeUserQuest = async (
   title: string, 
   difficulty: string,
-  playerLevel: number
+  playerLevel: number,
+  questType: string = 'DAILY'
 ): Promise<QuestAnalysis | null> => {
   try {
     const systemPrompt = `
@@ -62,21 +63,17 @@ export const analyzeUserQuest = async (
       The user has submitted a personal task. You must gamify it.
       
       Input: "${title}"
+      Quest Type: ${questType} (DAILY = base rewards, WEEKLY = 2-3x daily, EPIC = 4-6x daily)
       User Selected Difficulty: ${difficulty}
       Player Level: ${playerLevel}
       
       Your Task:
       1. technicalTitle: Refine the user's title to sound slightly more technical/sci-fi, BUT KEEP IT SHORT.
       2. statRewards: Analyze the task and assign points to relevant stats [physical, cognitive, career, financial, mental, creative]. 
-         - A task can reward multiple stats (e.g., "Yoga" = physical + mental).
-         - Total points should scale with difficulty:
-           * Easy: 1-3 total points
-           * Medium: 3-5 total points
-           * Hard: 5-10 total points
-           * Extreme: 10-20 total points
-      3. xpReward: Assign XP based on difficulty (Easy: ~50-100, Med: ~150-250, Hard: ~300-500, Extreme: ~600+). Scale slightly with Player Level.
-      4. creditReward: Assign currency rewards (approx 30% of XP value).
-      5. penaltyDescription: Create a thematic, uncomfortable consequence description (e.g., "Dopamine receptors downregulated", "-50 XP", "Social shame protocol initiated").
+         - Total points scale with difficulty (Easy 1-3, Medium 3-5, Hard 5-10, Extreme 10-20) and with type (Weekly/Epic more).
+      3. xpReward: Scale by BOTH quest type AND difficulty. Daily: Easy 50-80, Med 100-150, Hard 180-250, Extreme 300+. Weekly: 2-3x those. Epic: 4-6x those.
+      4. creditReward: About 25-35% of XP value.
+      5. penaltyDescription: Materialistic, concrete consequences (e.g. "No video games or streaming tonight", "No social media for 24h", "Skip one cheat meal this week"). Always end with XP loss in parentheses, e.g. "(-50 XP)" or "(-150 XP)".
     `;
 
     const response = await ai.models.generateContent({
@@ -113,13 +110,15 @@ export const analyzeUserQuest = async (
 
   } catch (error) {
     console.error("Quest Analysis Error:", error);
-    // Fallback if AI fails
+    const baseXP = 100;
+    const mult = questType === 'EPIC' ? 5 : questType === 'WEEKLY' ? 2.5 : 1;
+    const xp = Math.round(baseXP * mult);
     return {
       technicalTitle: title,
       statRewards: { mental: 1 },
-      xpReward: 100,
-      creditReward: 30,
-      penaltyDescription: "-50 XP"
+      xpReward: xp,
+      creditReward: Math.round(xp * 0.3),
+      penaltyDescription: "No entertainment apps for 24h (-" + Math.round(xp * 0.1) + " XP)"
     };
   }
 };

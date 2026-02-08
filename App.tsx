@@ -40,7 +40,7 @@ import Auth from './components/Auth';
 import Onboarding from './components/Onboarding'; 
 import LevelUpModal from './components/LevelUpModal'; 
 import { analyzeUserQuest } from './services/geminiService';
-import { getLocalDate, getYesterdayDate, getStartOfWeek, getStartOfMonth } from './lib/dateUtils';
+import { getLocalDate, getYesterdayDate, getStartOfWeek, getStartOfMonth, getLocalDateStringFromISO } from './lib/dateUtils';
 
 // --- Subcomponents ---
 
@@ -246,8 +246,8 @@ export default function App() {
     const msgs: string[] = [];
 
     const updatedQuests = fetchedQuests.map(q => {
-      const completedAtDate = q.lastCompletedAt ? q.lastCompletedAt.split('T')[0] : null;
-      const createdAtDate = q.createdAt ? q.createdAt.split('T')[0] : today;
+      const completedAtDate = getLocalDateStringFromISO(q.lastCompletedAt);
+      const createdAtDate = getLocalDateStringFromISO(q.createdAt) ?? today;
 
       // --- DAILY QUESTS ---
       if (q.type === QuestType.DAILY) {
@@ -361,13 +361,19 @@ export default function App() {
     const rawNewXP = player.currentXP + (quest.xpReward * multiplier);
     const newCredits = Math.max(0, player.credits + (quest.creditReward * multiplier));
     
-    // Streak Logic (SMART)
+    // Streak: only increment for consecutive days; break if gap
     let newStreak = player.streak;
     let newLastActiveDate = player.lastActiveDate;
 
     if (isCompleting && quest.type === QuestType.DAILY) {
-       if (player.lastActiveDate !== today) {
+       const yesterday = getYesterdayDate();
+       if (player.lastActiveDate === yesterday) {
          newStreak += 1;
+         newLastActiveDate = today;
+       } else if (player.lastActiveDate === today) {
+         newLastActiveDate = today;
+       } else {
+         newStreak = 1;
          newLastActiveDate = today;
        }
     } 
@@ -437,7 +443,7 @@ export default function App() {
     setIsAnalyzing(true);
     
     // Call AI
-    const analysis = await analyzeUserQuest(newQuestInput.title, newQuestInput.difficulty, player.level);
+    const analysis = await analyzeUserQuest(newQuestInput.title, newQuestInput.difficulty, player.level, newQuestInput.type);
     
     if (analysis) {
        setAiAnalysis({
@@ -448,12 +454,13 @@ export default function App() {
        });
        setSuggestedStats(analysis.statRewards);
     } else {
-       // Fallback
+       const baseXP = newQuestInput.type === QuestType.EPIC ? 500 : newQuestInput.type === QuestType.WEEKLY ? 200 : 100;
+       const xpLoss = Math.ceil(baseXP * (newQuestInput.type === QuestType.EPIC ? 0.3 : newQuestInput.type === QuestType.WEEKLY ? 0.2 : 0.1));
        setAiAnalysis({
          technicalTitle: newQuestInput.title,
-         xpReward: 100,
-         creditReward: 25,
-         penaltyDescription: '-50 XP'
+         xpReward: baseXP,
+         creditReward: Math.round(baseXP * 0.3),
+         penaltyDescription: `No entertainment for 24h (-${xpLoss} XP)`
        });
        setSuggestedStats({ mental: 1 });
     }
@@ -618,6 +625,15 @@ export default function App() {
           oldLevel={levelUpState.oldLevel} 
           newLevel={levelUpState.newLevel} 
           onClose={() => setLevelUpState(null)} 
+        />
+      )}
+
+      {/* Mobile: backdrop when sidebar open — tap outside to close */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 z-[55]"
+          aria-hidden
+          onClick={() => setSidebarOpen(false)}
         />
       )}
 
@@ -801,14 +817,19 @@ export default function App() {
                           NO DIRECTIVES FOUND. INITIATE PROTOCOL.
                         </div>
                       ) : (
-                        quests.map(quest => (
-                          <QuestCard 
-                            key={quest.id} 
-                            quest={quest} 
-                            onClick={openQuestModal} 
-                            onToggleStatus={toggleQuestStatus}
-                          />
-                        ))
+                        [...quests]
+                          .sort((a, b) => {
+                            const order = (t: string) => ({ DAILY: 0, WEEKLY: 1, EPIC: 2, LEGENDARY: 3 }[t] ?? 0);
+                            return order(a.type) - order(b.type);
+                          })
+                          .map(quest => (
+                            <QuestCard 
+                              key={quest.id} 
+                              quest={quest} 
+                              onClick={openQuestModal} 
+                              onToggleStatus={toggleQuestStatus}
+                            />
+                          ))
                       )}
                     </div>
                  </div>
@@ -1070,7 +1091,11 @@ export default function App() {
                          value={aiAnalysis.penaltyDescription}
                          onChange={(e) => setAiAnalysis({...aiAnalysis, penaltyDescription: e.target.value})}
                          className="w-full bg-black border border-axiom-danger/30 text-axiom-danger rounded p-2 text-sm focus:border-axiom-danger outline-none"
+                         placeholder="e.g. No video games tonight (-50 XP)"
                        />
+                       <p className="text-[10px] font-mono text-axiom-danger/80 mt-1">
+                         XP loss on fail: -{Math.ceil(aiAnalysis.xpReward * (newQuestInput.type === QuestType.EPIC ? 0.3 : newQuestInput.type === QuestType.WEEKLY ? 0.2 : 0.1))} XP
+                       </p>
                     </div>
 
                     <div className="pt-2 flex justify-between items-center border-t border-axiom-800 mt-4">
@@ -1192,6 +1217,9 @@ export default function App() {
                       <div>
                          <span className="text-gray-500 block">Penalty</span>
                          <span className="text-axiom-danger mt-1">{selectedQuest.penaltyDescription}</span>
+                         <span className="text-axiom-danger/80 text-xs font-mono mt-0.5 block">
+                           (-{Math.ceil(selectedQuest.xpReward * (selectedQuest.type === QuestType.EPIC ? 0.3 : selectedQuest.type === QuestType.WEEKLY ? 0.2 : 0.1))} XP on fail)
+                         </span>
                       </div>
                       <div>
                          <span className="text-gray-500 block">Deadline</span>

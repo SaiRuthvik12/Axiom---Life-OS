@@ -11,6 +11,20 @@ export const getLocalDate = (): string => {
 };
 
 /**
+ * Converts an ISO timestamp (e.g. from DB) to the user's local date YYYY-MM-DD.
+ * Use this so "created today" / "completed yesterday" use the user's timezone, not UTC.
+ */
+export const getLocalDateStringFromISO = (iso: string | null | undefined): string | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Returns the date string for "Yesterday" in local time.
  */
 export const getYesterdayDate = (): string => {
@@ -33,15 +47,15 @@ export const getDaysDifference = (date1: string, date2: string): number => {
 };
 
 /**
- * Returns the date string of the Monday of the current week.
- * Assumes Week starts on Monday.
+ * Returns the date string of the Monday of the current week (user's local time).
+ * Week starts on Monday.
  */
 export const getStartOfWeek = (): string => {
   const now = new Date();
   const day = now.getDay(); // 0 (Sun) - 6 (Sat)
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-  const monday = new Date(now.setDate(diff));
-  
+  const daysBack = day === 0 ? 6 : day - 1; // Monday = 1, so go back (day-1) days; Sunday = 0 → 6 back
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - daysBack);
   const year = monday.getFullYear();
   const month = String(monday.getMonth() + 1).padStart(2, '0');
   const d = String(monday.getDate()).padStart(2, '0');

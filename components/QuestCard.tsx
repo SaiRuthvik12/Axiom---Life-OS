@@ -8,13 +8,21 @@ interface QuestCardProps {
   onToggleStatus?: (questId: string, e: React.MouseEvent) => void;
 }
 
+const QUEST_TYPE_STYLE: Record<string, string> = {
+  DAILY: 'border-gray-500 bg-gray-800/30',
+  WEEKLY: 'border-axiom-accent bg-axiom-accent/10',
+  EPIC: 'border-amber-500 bg-amber-500/10',
+  LEGENDARY: 'border-amber-400 bg-amber-400/20',
+};
+
 const QuestCard: React.FC<QuestCardProps> = ({ quest, onClick, onToggleStatus }) => {
+  const typeStyle = QUEST_TYPE_STYLE[quest.type] ?? 'border-axiom-700 bg-axiom-800/30';
   const getStatusColor = (status: QuestStatus) => {
     switch (status) {
       case QuestStatus.COMPLETED: return 'border-axiom-success bg-axiom-success/10 text-axiom-success';
       case QuestStatus.FAILED: return 'border-axiom-danger bg-axiom-danger/10 text-axiom-danger';
       case QuestStatus.VERIFYING: return 'border-axiom-warning bg-axiom-warning/10 text-axiom-warning';
-      default: return 'border-axiom-700 bg-axiom-800/50 text-gray-300 hover:border-axiom-accent';
+      default: return `${typeStyle} text-gray-300 hover:opacity-90`;
     }
   };
 
@@ -39,7 +47,7 @@ const QuestCard: React.FC<QuestCardProps> = ({ quest, onClick, onToggleStatus })
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-xs uppercase tracking-wider opacity-70">
+            <span className={`font-mono text-xs uppercase tracking-wider opacity-90 ${quest.type === 'DAILY' ? 'text-gray-400' : quest.type === 'WEEKLY' ? 'text-axiom-accent' : 'text-amber-400'}`}>
               [{quest.type}] :: {quest.difficulty}
             </span>
             {quest.status === QuestStatus.VERIFYING && (
@@ -74,8 +82,8 @@ const QuestCard: React.FC<QuestCardProps> = ({ quest, onClick, onToggleStatus })
               ))}
             </div>
 
-            {quest.status === QuestStatus.PENDING && (
-               <span className="flex items-center gap-1 text-axiom-danger opacity-70 ml-auto md:ml-0">
+            {quest.status === QuestStatus.PENDING && quest.penaltyDescription && (
+               <span className="flex items-center gap-1 text-axiom-danger opacity-90 ml-auto md:ml-0" title="Failure penalty">
                  <AlertCircle size={12} />
                  {quest.penaltyDescription}
                </span>

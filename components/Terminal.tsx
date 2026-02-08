@@ -32,17 +32,22 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
 
-  // Initial GM Greeting
+  // GM greeting only once per session (not on every Dashboard open / tab switch)
+  const gmShownRef = useRef(false);
   useEffect(() => {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('axiom_gm_greeting_shown') === '1') return;
+    if (gmShownRef.current) return;
+    gmShownRef.current = true;
     const initGM = async () => {
       setIsProcessing(true);
       const greeting = await generateGMCommentary(player, quests, "Initialize session. Acknowledge user return.");
       setHistory(prev => [...prev, `GM: ${greeting}`]);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('axiom_gm_greeting_shown', '1');
       setIsProcessing(false);
     };
     initGM();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  }, []);
 
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
