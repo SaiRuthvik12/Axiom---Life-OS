@@ -38,6 +38,7 @@ export interface Quest {
   linkedStat: StatKey;
   deadline: string;
   lastCompletedAt?: string;
+  lastPenaltyAt?: string; // Tracks when this quest was last penalized (prevents repeat penalties)
   createdAt: string; 
 }
 

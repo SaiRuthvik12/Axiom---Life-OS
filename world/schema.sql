@@ -4,6 +4,9 @@
 -- Run this in the Supabase SQL Editor AFTER the main schema.
 -- This adds the world_states table alongside existing profiles/quests.
 
+-- 0. Cleanup
+DROP TABLE IF EXISTS world_states CASCADE;
+
 -- World States Table
 -- Stores the entire world state as a single JSONB document per user.
 -- This avoids complex relational modeling for a deeply nested game state

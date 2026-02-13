@@ -35,6 +35,7 @@ interface QuestRow {
   linked_stat: any;
   deadline: string;
   last_completed_at?: string;
+  last_penalty_at?: string;
   created_at: string;
 }
 
@@ -144,6 +145,7 @@ export const PlayerService = {
       linkedStat: row.linked_stat,
       deadline: row.deadline,
       lastCompletedAt: row.last_completed_at,
+      lastPenaltyAt: row.last_penalty_at,
       createdAt: row.created_at
     }));
   },
@@ -193,6 +195,7 @@ export const PlayerService = {
     if (updates.linkedStat) dbUpdates.linked_stat = updates.linkedStat;
     if (updates.deadline) dbUpdates.deadline = updates.deadline;
     if (updates.lastCompletedAt) dbUpdates.last_completed_at = updates.lastCompletedAt;
+    if (updates.lastPenaltyAt) dbUpdates.last_penalty_at = updates.lastPenaltyAt;
 
     const { error } = await supabase
       .from('quests')

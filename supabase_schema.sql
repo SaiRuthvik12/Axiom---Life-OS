@@ -19,7 +19,7 @@ create table profiles (
   stats jsonb default '{"physical": 10, "cognitive": 10, "career": 10, "financial": 10, "mental": 10, "creative": 10}'::jsonb,
   streak int default 0,
   risk_tolerance text default 'MEDIUM',
-  last_active_date text, -- NEW: Stores YYYY-MM-DD for streak tracking
+  last_active_date text, -- Stores YYYY-MM-DD for streak tracking
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -39,7 +39,8 @@ create table quests (
   data_source text default 'MANUAL_OVERRIDE',
   linked_stat text default 'mental', -- Deprecated in favor of stat_rewards, kept for fallback
   deadline text,
-  last_completed_at timestamp with time zone, -- NEW: For daily reset logic
+  last_completed_at timestamp with time zone, -- For daily reset logic
+  last_penalty_at text, -- Stores YYYY-MM-DD: tracks when quest was last penalized (prevents repeat penalties)
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

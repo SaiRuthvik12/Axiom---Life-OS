@@ -161,6 +161,16 @@ export default function App() {
   const [isEditingQuest, setIsEditingQuest] = useState(false);
   const [editQuestForm, setEditQuestForm] = useState<Partial<Quest>>({});
 
+  // Keep selectedQuest in sync when quests array updates (e.g. after toggle)
+  useEffect(() => {
+    if (selectedQuest) {
+      const updated = quests.find(q => q.id === selectedQuest.id);
+      if (updated && updated.status !== selectedQuest.status) {
+        setSelectedQuest(updated);
+      }
+    }
+  }, [quests]);
+
   // 1. Auth & Data Loading Effect
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -216,19 +226,16 @@ export default function App() {
       }
 
       let processedQuests: Quest[] = userQuests || [];
+      const today = getLocalDate();
 
       if (userQuests && currentPlayer) {
-         // CORE LOGIC: Process Resets for Daily, Weekly, and Epic
-         const { updatedQuests, totalPenalty, streakBroken, msgs } = await processAllResets(userQuests);
+         // CORE LOGIC: Process resets & one-time penalties for Daily, Weekly, and Epic.
+         // Per-quest lastPenaltyAt tracking ensures penalties fire exactly once per miss cycle.
+         const { updatedQuests, totalPenalty, streakBroken } = await processAllResets(userQuests);
          processedQuests = updatedQuests;
          setQuests(updatedQuests);
 
          if (totalPenalty > 0 || streakBroken) {
-            
-            // Push these to Terminal via state
-            setSystemMessages(msgs);
-
-            // Apply penalty to player
             const penalizedXP = Math.max(0, currentPlayer.currentXP - totalPenalty);
             const updatedStreak = streakBroken ? 0 : currentPlayer.streak;
             
@@ -237,10 +244,12 @@ export default function App() {
                currentXP: penalizedXP,
                streak: updatedStreak
             };
-
-            // Save player penalty state
             await PlayerService.updateProfile(userId, currentPlayer);
          }
+
+         // Generate active penalty messages from quest data (shows for limited time then auto-clears)
+         const penaltyMessages = generateActivePenaltyMessages(updatedQuests);
+         setSystemMessages(penaltyMessages);
       }
 
       setPlayer(currentPlayer || INITIAL_PLAYER);
@@ -255,8 +264,8 @@ export default function App() {
           }
 
           // Apply decay once per day (first load of the day)
-          const today = getLocalDate();
-          const lastWorldProcess = world.lastProcessedAt?.split('T')[0] ?? '';
+          // Use getLocalDateStringFromISO to convert UTC timestamp to local date for correct comparison
+          const lastWorldProcess = getLocalDateStringFromISO(world.lastProcessedAt) ?? '';
           if (lastWorldProcess < today) {
             const completedStats: StatKey[] = [...new Set(
               processedQuests
@@ -281,7 +290,45 @@ export default function App() {
     }
   };
 
+  // Helper: Check if a quest was already penalized for the current period.
+  // Daily → once per day, Weekly → once per week, Epic → once per month.
+  // Each missed period gets its own penalty, but only one per period (no repeats on reload).
+  const isPenalizedForPeriod = (q: Quest, periodStart: string): boolean => {
+    const penaltyDate = getLocalDateStringFromISO(q.lastPenaltyAt);
+    return !!penaltyDate && penaltyDate >= periodStart;
+  };
+
+  // Helper: Generate "Active Penalties" display messages from quest data.
+  // Daily penalties show for the day they were applied, then disappear.
+  // Weekly penalties show for the week, epic penalties show for the month.
+  const generateActivePenaltyMessages = (allQuests: Quest[]): string[] => {
+    const today = getLocalDate();
+    const startOfWeek = getStartOfWeek();
+    const startOfMonth = getStartOfMonth();
+    const msgs: string[] = [];
+
+    for (const q of allQuests) {
+      const penaltyDate = getLocalDateStringFromISO(q.lastPenaltyAt);
+      if (!penaltyDate) continue;
+
+      if (q.type === QuestType.DAILY && penaltyDate === today) {
+        const penalty = Math.ceil(q.xpReward * 0.1);
+        msgs.push(`MISSED PROTOCOL: ${q.title} (-${penalty} XP)`);
+      } else if (q.type === QuestType.WEEKLY && penaltyDate >= startOfWeek) {
+        const penalty = Math.ceil(q.xpReward * 0.2);
+        msgs.push(`WEEKLY FAILURE: ${q.title} (-${penalty} XP)`);
+      } else if (q.type === QuestType.EPIC && penaltyDate >= startOfMonth) {
+        const penalty = Math.ceil(q.xpReward * 0.3);
+        msgs.push(`EPIC FAILURE: ${q.title} (-${penalty} XP)`);
+      }
+    }
+
+    return msgs;
+  };
+
   // The Engine: Universal Reset Logic
+  // Handles status resets (COMPLETED→PENDING for new periods) and one-time penalty application.
+  // Per-quest lastPenaltyAt tracking ensures each miss is penalized exactly once.
   const processAllResets = async (fetchedQuests: Quest[]) => {
     const today = getLocalDate();
     const yesterday = getYesterdayDate();
@@ -291,7 +338,6 @@ export default function App() {
     const updates: Promise<void>[] = [];
     let totalPenalty = 0;
     let streakBroken = false;
-    const msgs: string[] = [];
 
     const updatedQuests = fetchedQuests.map(q => {
       const completedAtDate = getLocalDateStringFromISO(q.lastCompletedAt);
@@ -299,9 +345,9 @@ export default function App() {
 
       // --- DAILY QUESTS ---
       if (q.type === QuestType.DAILY) {
-        if (completedAtDate === today) return q; // Done today
+        if (completedAtDate === today) return q; // Done today, all good
 
-        // If done yesterday, reset to PENDING (New Day)
+        // If done yesterday, reset to PENDING (New Day) — no penalty
         if (completedAtDate === yesterday) {
            if (q.status === QuestStatus.COMPLETED) {
               updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING }));
@@ -309,17 +355,22 @@ export default function App() {
            }
         }
 
-        // If NOT done yesterday (and created before today) -> FAIL
+        // If NOT done yesterday (and created before today) -> missed
         if (createdAtDate < today && completedAtDate !== yesterday) {
-             const penalty = Math.ceil(q.xpReward * 0.1);
-             totalPenalty += penalty;
-             streakBroken = true;
-             msgs.push(`MISSED PROTOCOL: ${q.title} (-${penalty} XP)`);
+          // Penalize once per missed day (skip if already penalized today)
+          if (!isPenalizedForPeriod(q, today)) {
+            const penalty = Math.ceil(q.xpReward * 0.1);
+            totalPenalty += penalty;
+            streakBroken = true;
+            updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING, lastPenaltyAt: today }));
+            return { ...q, status: QuestStatus.PENDING, lastPenaltyAt: today };
+          }
 
-             if (q.status !== QuestStatus.PENDING) {
-                 updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING }));
-                 return { ...q, status: QuestStatus.PENDING };
-             }
+          // Already penalized today — just ensure status is PENDING
+          if (q.status !== QuestStatus.PENDING) {
+            updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING }));
+            return { ...q, status: QuestStatus.PENDING };
+          }
         }
 
         // Catch-all: reset completed to pending if old
@@ -331,49 +382,51 @@ export default function App() {
 
       // --- WEEKLY QUESTS ---
       else if (q.type === QuestType.WEEKLY) {
-        // If completed this week, good.
-        // We compare completedAtDate to startOfWeek.
         const isCompletedThisWeek = completedAtDate && completedAtDate >= startOfWeek;
 
         if (isCompletedThisWeek && q.status === QuestStatus.COMPLETED) {
-            return q;
+            return q; // Completed this week, all good
         }
 
-        // If status is COMPLETED but date is before startOfWeek -> Reset to PENDING (New Week)
+        // Reset to PENDING if completion is from a previous week
         if (q.status === QuestStatus.COMPLETED && (!completedAtDate || completedAtDate < startOfWeek)) {
             updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING }));
             return { ...q, status: QuestStatus.PENDING };
         }
 
-        // If PENDING and created before this week -> FAILURE (Missed last week)
+        // PENDING and created before this week -> missed last week
+        // Penalize once per missed week (skip if already penalized this week)
         if (q.status === QuestStatus.PENDING && createdAtDate < startOfWeek) {
-            // Apply Penalty (Higher for weekly)
-            const penalty = Math.ceil(q.xpReward * 0.2); 
+          if (!isPenalizedForPeriod(q, startOfWeek)) {
+            const penalty = Math.ceil(q.xpReward * 0.2);
             totalPenalty += penalty;
-            msgs.push(`WEEKLY FAILURE: ${q.title} (-${penalty} XP)`);
-            
-            // It stays Pending, but we acknowledge the failure
+            updates.push(PlayerService.updateQuest(q.id, { lastPenaltyAt: today }));
+            return { ...q, lastPenaltyAt: today };
+          }
         }
       }
 
       // --- EPIC QUESTS ---
       else if (q.type === QuestType.EPIC) {
-        // Epic logic: Monthly reset
         const isCompletedThisMonth = completedAtDate && completedAtDate >= startOfMonth;
 
         if (isCompletedThisMonth && q.status === QuestStatus.COMPLETED) return q;
 
-        // Reset if old completion
+        // Reset if completion is from a previous month
         if (q.status === QuestStatus.COMPLETED && (!completedAtDate || completedAtDate < startOfMonth)) {
              updates.push(PlayerService.updateQuest(q.id, { status: QuestStatus.PENDING }));
              return { ...q, status: QuestStatus.PENDING };
         }
 
-        // Fail if Pending and created before this month
+        // PENDING and created before this month -> missed last month
+        // Penalize once per missed month (skip if already penalized this month)
         if (q.status === QuestStatus.PENDING && createdAtDate < startOfMonth) {
+          if (!isPenalizedForPeriod(q, startOfMonth)) {
             const penalty = Math.ceil(q.xpReward * 0.3);
             totalPenalty += penalty;
-            msgs.push(`EPIC FAILURE: ${q.title} (-${penalty} XP)`);
+            updates.push(PlayerService.updateQuest(q.id, { lastPenaltyAt: today }));
+            return { ...q, lastPenaltyAt: today };
+          }
         }
       }
 
@@ -382,9 +435,7 @@ export default function App() {
 
     await Promise.all(updates);
     
-    if (streakBroken) msgs.unshift("STREAK BROKEN: Consistency failure.");
-    
-    return { updatedQuests, totalPenalty, streakBroken, msgs };
+    return { updatedQuests, totalPenalty, streakBroken };
   };
 
   const handleLogout = async () => {
