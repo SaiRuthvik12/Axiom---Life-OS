@@ -19,6 +19,7 @@ import { getWorldStatusNarrative } from '../narrative';
 import { DistrictCard } from './DistrictCard';
 import { CompanionPanel } from './CompanionPanel';
 import { ArtifactCard } from './ArtifactCard';
+import { NexusScene } from '../3d/NexusScene';
 import type { Player } from '../../types';
 
 interface WorldViewProps {
@@ -53,7 +54,15 @@ export const WorldView: React.FC<WorldViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
+      {/* ── 3D Scene (two-level: overview + detail) ── */}
+      <NexusScene
+        worldState={worldState}
+        player={player}
+        onBuildStructure={onBuildStructure}
+        onRepairStructure={onRepairStructure}
+      />
+
+      {/* ── Info Bar (moved from old header) ── */}
       <div className="rounded-lg border border-zinc-800/50 bg-zinc-900/60 p-4 md:p-5">
         {/* Title row */}
         <div className="flex items-center gap-2 mb-1">
@@ -108,8 +117,8 @@ export const WorldView: React.FC<WorldViewProps> = ({
               : undefined;
 
             return (
+              <div key={districtDef.id} id={`district-${districtDef.id}`}>
               <DistrictCard
-                key={districtDef.id}
                 districtDef={districtDef}
                 districtState={districtState}
                 structures={districtStructures}
@@ -120,6 +129,7 @@ export const WorldView: React.FC<WorldViewProps> = ({
                 onBuild={onBuildStructure}
                 onRepair={onRepairStructure}
               />
+              </div>
             );
           })}
         </div>
