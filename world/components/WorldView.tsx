@@ -58,7 +58,9 @@ export const WorldView: React.FC<WorldViewProps> = ({
         {/* Title row */}
         <div className="flex items-center gap-2 mb-1">
           <Globe className="h-5 w-5 text-emerald-400 shrink-0" />
-          <h2 className="text-lg font-mono font-bold text-white truncate">{worldState.nexusName}</h2>
+          <h2 className="text-lg font-mono font-bold text-white truncate">
+            {(player.name?.trim() || 'Operative')}'s Nexus
+          </h2>
         </div>
 
         {/* Badges */}
