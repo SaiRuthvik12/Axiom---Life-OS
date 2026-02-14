@@ -61,3 +61,98 @@ After deploying, open the app URL on your phone:
 - **iOS (Safari):** Share → “Add to Home Screen.”
 
 Open Axiom from the home screen to use it in a standalone window. For a custom app icon on iOS, add `public/icons/icon-192.png` and `public/icons/icon-512.png`; the build includes a default icon.
+
+## Push Notifications
+
+Axiom can send push notifications to your phone (even when the app is closed) for:
+
+- **Quest reminders** — Daily quests at 9 PM, weekly quests on Friday, monthly quests 5 days before month end
+- **World events** — District decay, recovery, companion updates, and more
+- **Milestones** — When you earn a new milestone
+- **Weekly recap** — Sunday evening summary
+
+### Setup
+
+Push notifications require three things: VAPID keys, a database table, and a cron job.
+
+#### 1. Generate VAPID keys
+
+```bash
+node scripts/generate-vapid-keys.mjs
+```
+
+This outputs a public key and a private key. Save them:
+
+- Add `VITE_VAPID_PUBLIC_KEY=<public_key>` to your `.env.local` (and to your host's env vars)
+- The private key goes into Supabase Edge Function secrets (step 3)
+
+#### 2. Create the push_subscriptions table
+
+In the Supabase **SQL Editor**, run the contents of [push_subscriptions_schema.sql](push_subscriptions_schema.sql). This creates the table and RLS policies.
+
+#### 3. Deploy the Edge Function
+
+Install the [Supabase CLI](https://supabase.com/docs/guides/cli) if you haven't already:
+
+- **macOS:** `brew install supabase/tap/supabase`
+- **Or:** add as dev dependency `npm i supabase --save-dev` and use `npx supabase` for all commands below.
+
+Link your project and set secrets:
+
+```bash
+cd /path/to/axiom
+supabase link --project-ref <your-project-ref>
+
+supabase secrets set VAPID_PRIVATE_KEY=<private_key>
+supabase secrets set VAPID_PUBLIC_KEY=<public_key>
+supabase secrets set VAPID_SUBJECT=mailto:your@email.com
+supabase secrets set CRON_SECRET=<any-random-secret>
+```
+
+Deploy the function:
+
+```bash
+supabase functions deploy check-reminders --no-verify-jwt
+```
+
+> `--no-verify-jwt` is used because the cron service authenticates via the `x-cron-secret` header instead of a JWT.
+
+#### 4. Set up the cron job
+
+The Edge Function needs to be called every hour to check for pending quest reminders. Use any HTTP cron service:
+
+**Option A: [cron-job.org](https://cron-job.org) (free)**
+
+1. Create an account and add a new cron job
+2. URL: `https://<project-ref>.supabase.co/functions/v1/check-reminders`
+3. Schedule: Every hour (`0 * * * *`)
+4. Method: `POST`
+5. Headers:
+   - `x-cron-secret: <your-cron-secret>`
+   - `Authorization: Bearer <your-supabase-anon-key>`
+
+**Option B: GitHub Actions**
+
+Add a workflow file `.github/workflows/cron-reminders.yml`:
+
+```yaml
+name: Quest Reminders
+on:
+  schedule:
+    - cron: "0 * * * *"
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            https://<project-ref>.supabase.co/functions/v1/check-reminders
+```
+
+### How it works
+
+- **World events & milestones**: Notifications are shown locally via the service worker when events occur and the app is backgrounded. No server needed.
+- **Quest reminders & weekly recap**: The Supabase Edge Function runs every hour, checks each user's timezone, and sends Web Push notifications at the right local time.
+- **Permission**: Users are prompted once to enable notifications. They can toggle individual notification types in System Core > Notifications.

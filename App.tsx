@@ -56,9 +56,11 @@ import {
   markEventRead,
   getWorldContextForGM,
 } from './world';
-import type { WorldState } from './world';
+import type { WorldState, WorldEvent } from './world';
 import { Chronicle } from './components/Chronicle/Chronicle';
 import { ChronicleService, buildDailyLogData, createCompactWorldSnapshot, compactWorldEvents } from './chronicle';
+import { subscribeToPush, showLocalNotification, getNotificationPreferences, type NotificationPreferences, DEFAULT_PREFERENCES } from './lib/pushNotifications';
+import { NotificationBanner, NotificationSettings } from './components/NotificationPrompt';
 
 // --- Subcomponents ---
 
@@ -158,6 +160,9 @@ export default function App() {
     penaltyDescription: string;
   } | null>(null);
 
+
+  // Notification State
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
 
   // Edit/View Quest Modal State
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
@@ -269,15 +274,21 @@ export default function App() {
           // Apply decay once per day (first load of the day)
           // Use getLocalDateStringFromISO to convert UTC timestamp to local date for correct comparison
           const lastWorldProcess = getLocalDateStringFromISO(world.lastProcessedAt) ?? '';
+          const preDecayEvents = [...world.events];
           if (lastWorldProcess < today) {
             const completedStats: StatKey[] = [...new Set(
               processedQuests
                 .filter(q => q.status === QuestStatus.COMPLETED)
                 .flatMap(q => Object.keys(q.statRewards || {}))
             )] as StatKey[];
+            const worldBeforeDecay = world;
             const decayResult = processDecay(world, completedStats);
             world = decayResult.state;
             await WorldService.updateWorldState(userId, world);
+
+            // Notify about new decay events and milestones
+            notifyWorldEvents(preDecayEvents, world.events);
+            notifyMilestones(worldBeforeDecay, world);
           }
 
           setWorldState(world);
@@ -290,6 +301,51 @@ export default function App() {
       console.error("Data load error", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Push Notifications: Auto-subscribe on login & load preferences ──
+  useEffect(() => {
+    if (!session) return;
+    const userId = session.user.id;
+
+    (async () => {
+      // If permission already granted, silently subscribe (handles re-subscribe after SW update)
+      if (Notification.permission === 'granted') {
+        await subscribeToPush(userId);
+      }
+      // Load notification preferences
+      const prefs = await getNotificationPreferences(userId);
+      setNotifPrefs(prefs);
+    })();
+  }, [session]);
+
+  // ── Helper: Fire local notifications for new world events ──
+  const notifyWorldEvents = (oldEvents: WorldEvent[], newEvents: WorldEvent[]) => {
+    if (!notifPrefs.world_events) return;
+    const oldIds = new Set(oldEvents.map(e => e.id));
+    const fresh = newEvents.filter(e => !oldIds.has(e.id));
+    for (const evt of fresh) {
+      showLocalNotification(evt.title, evt.description, {
+        tag: `world-${evt.id}`,
+        type: 'world_event',
+      });
+    }
+  };
+
+  // ── Helper: Fire local notifications for newly earned milestones ──
+  const notifyMilestones = (oldState: WorldState | null, newState: WorldState) => {
+    if (!notifPrefs.milestones || !oldState) return;
+    for (const ms of newState.milestones) {
+      if (!ms.isEarned) continue;
+      const prev = oldState.milestones.find(m => m.id === ms.id);
+      if (prev && !prev.isEarned) {
+        // This milestone was just earned
+        showLocalNotification(`Milestone Unlocked: ${ms.id}`, `You earned a new milestone!`, {
+          tag: `milestone-${ms.id}`,
+          type: 'milestone',
+        });
+      }
     }
   };
 
@@ -541,12 +597,16 @@ export default function App() {
     let updatedWorldState = worldState;
     if (worldState) {
       if (isCompleting) {
+        const preEvents = [...worldState.events];
         const result = processQuestCompletion(worldState, quest, updatedPlayer);
         updatedWorldState = result.state;
         setWorldState(result.state);
         if (session) {
           WorldService.updateWorldState(session.user.id, result.state);
         }
+        // Notify about new world events and milestones from this quest completion
+        notifyWorldEvents(preEvents, result.state.events);
+        notifyMilestones(worldState, result.state);
       } else {
         const reversed = processQuestUncompletion(worldState, quest);
         updatedWorldState = reversed;
@@ -722,6 +782,7 @@ export default function App() {
   // ── World System Handlers ──
   const handleBuildStructure = async (districtId: string, structureId: string) => {
     if (!worldState) return;
+    const preEvents = [...worldState.events];
     const result = buildStructure(worldState, districtId, structureId, player.level, player.credits);
     if ('error' in result) { alert(result.error); return; }
     setWorldState(result.state);
@@ -731,10 +792,13 @@ export default function App() {
       WorldService.updateWorldState(session.user.id, result.state);
       PlayerService.updateProfile(session.user.id, { credits: newCredits });
     }
+    notifyWorldEvents(preEvents, result.state.events);
+    notifyMilestones(worldState, result.state);
   };
 
   const handleRepairStructure = async (districtId: string, structureId: string) => {
     if (!worldState) return;
+    const preEvents = [...worldState.events];
     const result = repairStructure(worldState, districtId, structureId, player.credits);
     if ('error' in result) { alert(result.error); return; }
     setWorldState(result.state);
@@ -744,10 +808,13 @@ export default function App() {
       WorldService.updateWorldState(session.user.id, result.state);
       PlayerService.updateProfile(session.user.id, { credits: newCredits });
     }
+    notifyWorldEvents(preEvents, result.state.events);
+    notifyMilestones(worldState, result.state);
   };
 
   const handleLaunchExpedition = async (expeditionId: string) => {
     if (!worldState) return;
+    const preEvents = [...worldState.events];
     const result = launchExpedition(worldState, expeditionId, player.credits, player.level, player.stats);
     if ('error' in result) { alert(result.error); return; }
     setWorldState(result.state);
@@ -757,6 +824,8 @@ export default function App() {
       WorldService.updateWorldState(session.user.id, result.state);
       PlayerService.updateProfile(session.user.id, { credits: newCredits });
     }
+    notifyWorldEvents(preEvents, result.state.events);
+    notifyMilestones(worldState, result.state);
   };
 
   const handleWorldEventRead = async (eventId: string) => {
@@ -811,6 +880,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-axiom-900 text-gray-200 overflow-hidden flex flex-col md:flex-row font-sans">
       
+      {/* Notification Permission Banner */}
+      {session && <NotificationBanner userId={session.user.id} />}
+
       {/* Level Up Modal Overlay */}
       {levelUpState && (
         <LevelUpModal 
@@ -1071,6 +1143,13 @@ export default function App() {
 
           {view === 'SYSTEM' && (
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               {/* Notification Settings */}
+               {session && (
+                 <div className="lg:col-span-2">
+                   <NotificationSettings userId={session.user.id} />
+                 </div>
+               )}
+
                <div className="bg-axiom-900 border border-axiom-800 rounded-lg p-8">
                  <h1 className="text-xl font-bold tracking-widest text-white mb-6 flex items-center gap-2">
                    <Server className="text-axiom-accent" /> SYSTEM ARCHITECTURE

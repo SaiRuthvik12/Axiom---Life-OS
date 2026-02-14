@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
       plugins: [
         react(),
         VitePWA({
+          strategies: 'injectManifest',
+          srcDir: '.',
+          filename: 'sw.ts',
           registerType: 'autoUpdate',
           includeAssets: ['favicon.ico', 'icon.svg'],
           manifest: {
@@ -29,20 +32,8 @@ export default defineConfig(({ mode }) => {
               { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
             ],
           },
-          workbox: {
+          injectManifest: {
             globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-            runtimeCaching: [
-              {
-                urlPattern: /^https:\/\/cdn\.tailwindcss\.com\/.*/i,
-                handler: 'CacheFirst',
-                options: { cacheName: 'tailwind-cdn', expiration: { maxEntries: 1, maxAgeSeconds: 60 * 60 * 24 * 30 } },
-              },
-              {
-                urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-                handler: 'CacheFirst',
-                options: { cacheName: 'google-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 } },
-              },
-            ],
           },
         }),
       ],
@@ -52,6 +43,7 @@ export default defineConfig(({ mode }) => {
         // Inline Supabase env at build time so Vercel/hosts always provide them
         __AXIOM_SUPABASE_URL__: JSON.stringify(process.env.VITE_SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? ''),
         __AXIOM_SUPABASE_ANON_KEY__: JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? ''),
+        __AXIOM_VAPID_PUBLIC_KEY__: JSON.stringify(process.env.VITE_VAPID_PUBLIC_KEY ?? env.VITE_VAPID_PUBLIC_KEY ?? ''),
       },
       resolve: {
         alias: {
