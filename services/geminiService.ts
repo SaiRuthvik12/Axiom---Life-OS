@@ -1,5 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Player, Quest, QuestType, QuestStatus, PlayerStats } from '../types';
+import type { DailyLog } from '../chronicle/types';
+import type { WorldState } from '../world/types';
+import { DISTRICTS, COMPANIONS, ERA_NAMES } from '../world/constants';
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -122,5 +125,84 @@ export const analyzeUserQuest = async (
       creditReward: Math.round(xp * 0.3),
       penaltyDescription: "No entertainment apps for 24h (-" + Math.round(xp * 0.1) + " XP)"
     };
+  }
+};
+
+// ════════════════════════════════════════
+// CHRONICLE: Day Narrative Generation
+// ════════════════════════════════════════
+
+export const generateDayNarrative = async (
+  log: DailyLog,
+  worldState: WorldState | null,
+): Promise<string | null> => {
+  try {
+    // Build context about the day
+    const questsSection = log.questTitles.length > 0
+      ? `Completed quests: ${log.questTitles.join(', ')}`
+      : 'No quests completed';
+
+    const statsSection = log.statsTouched.length > 0
+      ? `Stats engaged: ${log.statsTouched.join(', ')}`
+      : 'No stats engaged';
+
+    let worldSection = '';
+    if (log.worldSnapshot) {
+      const districtSummary = log.worldSnapshot.districts
+        .map(d => {
+          const def = DISTRICTS.find(dd => dd.id === d.id);
+          return `${def?.name ?? d.id}: ${d.condition} (${d.vitality}%)`;
+        })
+        .join(', ');
+      worldSection = `World: "${log.worldSnapshot.worldTitle}" — Era of ${ERA_NAMES[log.worldSnapshot.era] ?? 'Foundation'}. Districts: ${districtSummary}`;
+
+      const companionMoods = Object.entries(log.worldSnapshot.companionMoods)
+        .map(([id, mood]) => {
+          const def = COMPANIONS.find(c => c.id === id);
+          return def ? `${def.name}: ${mood}` : null;
+        })
+        .filter(Boolean)
+        .join(', ');
+      if (companionMoods) worldSection += `. Companions: ${companionMoods}`;
+    }
+
+    const eventsSection = log.worldEvents.length > 0
+      ? `Events: ${log.worldEvents.map(e => e.title).join(', ')}`
+      : '';
+
+    const prompt = `
+You are the AXIOM Chronicle narrator. Write a 2-3 sentence narrative summary of this day in the user's Nexus.
+
+Day Rating: ${log.dayRating}
+${questsSection}
+XP earned: ${log.xpEarned}. Credits earned: ${log.creditsEarned}.
+${statsSection}
+${worldSection}
+${eventsSection}
+Streak: ${log.streakCount} days.
+
+TONE RULES (non-negotiable):
+- If "strong" day: be impressed and specific. Reference quest names or companion names.
+- If "steady" day: be calm and affirming. "The kind of day that compounds."
+- If "recovery" day: celebrate the comeback. "You returned. That matters."
+- If "light" or "neutral" day: be gentle. "A quiet day. The structures hold."
+- If "absent" day: be melancholic but hopeful. "The Nexus waited." Never shame.
+- NEVER use guilt, urgency, or accusatory language.
+- NEVER say "you failed" or "you need to".
+- Reference specific companions or districts by name when possible.
+- Vary your tone. Sometimes poetic, sometimes direct.
+- Keep it under 3 sentences. No bullet points. Write in prose.
+    `.trim();
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    });
+
+    const narrative = response.text?.trim();
+    return narrative || null;
+  } catch (error) {
+    console.error('[Chronicle] Narrative generation error:', error);
+    return null;
   }
 };

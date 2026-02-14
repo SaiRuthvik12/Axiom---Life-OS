@@ -26,7 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowRight,
-  Globe
+  Globe,
+  ScrollText
 } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -56,6 +57,8 @@ import {
   getWorldContextForGM,
 } from './world';
 import type { WorldState } from './world';
+import { Chronicle } from './components/Chronicle/Chronicle';
+import { ChronicleService, buildDailyLogData, createCompactWorldSnapshot, compactWorldEvents } from './chronicle';
 
 // --- Subcomponents ---
 
@@ -132,7 +135,7 @@ export default function App() {
   
   // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [view, setView] = useState<'DASHBOARD' | 'STORE' | 'SYSTEM' | 'WORLD'>('DASHBOARD');
+  const [view, setView] = useState<'DASHBOARD' | 'STORE' | 'SYSTEM' | 'WORLD' | 'CHRONICLE'>('DASHBOARD');
   const [levelUpState, setLevelUpState] = useState<{oldLevel: number, newLevel: number} | null>(null);
   const [systemMessages, setSystemMessages] = useState<string[]>([]);
   
@@ -535,20 +538,43 @@ export default function App() {
     }
 
     // ── World System: Process quest completion / un-completion ──
+    let updatedWorldState = worldState;
     if (worldState) {
       if (isCompleting) {
         const result = processQuestCompletion(worldState, quest, updatedPlayer);
+        updatedWorldState = result.state;
         setWorldState(result.state);
         if (session) {
           WorldService.updateWorldState(session.user.id, result.state);
         }
       } else {
         const reversed = processQuestUncompletion(worldState, quest);
+        updatedWorldState = reversed;
         setWorldState(reversed);
         if (session) {
           WorldService.updateWorldState(session.user.id, reversed);
         }
       }
+    }
+
+    // ── Chronicle: Update daily log ──
+    try {
+      const allQuests = quests.map(q => q.id === questId ? updatedQuest : q);
+      const logData = buildDailyLogData(
+        today,
+        allQuests,
+        updatedPlayer,
+        updatedWorldState,
+        updatedWorldState?.events.filter(e => {
+          const evtDate = e.timestamp.split('T')[0];
+          return evtDate === today;
+        }) ?? [],
+        undefined,
+      );
+      const uid = session?.user?.id ?? 'demo';
+      ChronicleService.upsertDailyLog(uid, logData);
+    } catch (err) {
+      console.error('[Chronicle] Log update failed:', err);
     }
   };
 
@@ -879,6 +905,12 @@ export default function App() {
               <Globe size={18} /> The Nexus
             </button>
             <button 
+              onClick={() => { setView('CHRONICLE'); setSidebarOpen(false); }}
+              className={`w-full text-left px-4 py-3 rounded-md text-sm font-medium transition-colors flex items-center gap-3 ${view === 'CHRONICLE' ? 'bg-axiom-800 text-white border-l-2 border-axiom-accent' : 'text-gray-400 hover:bg-axiom-800/50 hover:text-white'}`}
+            >
+              <ScrollText size={18} /> Chronicle
+            </button>
+            <button 
               onClick={() => { setView('STORE'); setSidebarOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-md text-sm font-medium transition-colors flex items-center gap-3 ${view === 'STORE' ? 'bg-axiom-800 text-white border-l-2 border-axiom-accent' : 'text-gray-400 hover:bg-axiom-800/50 hover:text-white'}`}
             >
@@ -1028,6 +1060,10 @@ export default function App() {
               onLaunchExpedition={handleLaunchExpedition}
               onEventRead={handleWorldEventRead}
             />
+          )}
+
+          {view === 'CHRONICLE' && (
+            <Chronicle player={player} quests={quests} worldState={worldState} session={session} />
           )}
 
           {view === 'SYSTEM' && (
