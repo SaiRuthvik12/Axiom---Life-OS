@@ -20,8 +20,14 @@ const Terminal: React.FC<TerminalProps> = ({ player, quests, initialMessages = [
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Track what was already appended to avoid duplicates when parent re-renders
+  // or fetchData runs multiple times (auth fires INITIAL_SESSION + SIGNED_IN).
+  const lastAppendedRef = useRef('');
   useEffect(() => {
     if (initialMessages.length > 0) {
+       const key = JSON.stringify(initialMessages);
+       if (key === lastAppendedRef.current) return; // Same messages, skip
+       lastAppendedRef.current = key;
        setHistory(prev => [
          ...prev, 
          ...initialMessages.map(msg => `SYSTEM: ${msg}`)

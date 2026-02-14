@@ -1023,8 +1023,11 @@ export default function App() {
                       ) : (
                         [...quests]
                           .sort((a, b) => {
-                            const order = (t: string) => ({ DAILY: 0, WEEKLY: 1, EPIC: 2, LEGENDARY: 3 }[t] ?? 0);
-                            return order(a.type) - order(b.type);
+                            const typeOrder = (t: string) => ({ DAILY: 0, WEEKLY: 1, EPIC: 2, LEGENDARY: 3 }[t] ?? 0);
+                            const typeDiff = typeOrder(a.type) - typeOrder(b.type);
+                            if (typeDiff !== 0) return typeDiff;
+                            const isComplete = (s: QuestStatus) => s === QuestStatus.COMPLETED || s === QuestStatus.FAILED ? 1 : 0;
+                            return isComplete(a.status) - isComplete(b.status);
                           })
                           .map(quest => (
                             <QuestCard 
